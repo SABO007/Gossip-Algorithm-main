@@ -5,7 +5,7 @@ use "files"
 use @exit[None](status: I32)
 
 actor Main
-    let _env: Env
+  let _env: Env
   var _actors: Array[Actor tag] val
   var _active_count: USize
   var _total_actors: USize
@@ -44,38 +44,37 @@ actor Main
       _output_file.print("Debug: Initializing with " + _total_actors.string() + " " + _topology + " " + _algorithm)
 
       _actors = recover val
-        let arr = Array[Actor tag](_total_actors)
-        for i in Range(0, _total_actors) do
-          if _algorithm == "gossip" then
-            arr.push(create_gossip_actor(i))
-          else
-            arr.push(create_push_sum_actor(i))
-          end
+      let arr = Array[Actor tag](_total_actors)
+      for i in Range(0, _total_actors) do
+        if _algorithm == "gossip" then
+          arr.push(create_gossip_actor(i))
+        else
+          arr.push(create_push_sum_actor(i))
         end
-        arr
+      end
+      arr
       end
 
       _output_file.print("Debug: Actors created")
 
-      // Build topology
       build_topology()
-        _output_file.print("Debug: Topology built")
 
-        // Start the algorithm
-        _start_time = Time.millis()
-        _output_file.print("Debug: Starting algorithm")
-        try
-            if _algorithm == "gossip" then
-            (_actors(0)? as GossipActor).start_gossip()
-            else
-            (_actors(0)? as PushSumActor).start_push_sum()
-            end
-        else
-            _output_file.print("Failed to start algorithm: No actors available")
-        end
+      _output_file.print("Debug: Topology built")
 
-        _set_timeout()
-        end
+      _start_time = Time.millis()
+      _output_file.print("Debug: Starting algorithm")
+      try
+          if _algorithm == "gossip" then
+          (_actors(0)? as GossipActor).start_gossip()
+          else
+          (_actors(0)? as PushSumActor).start_push_sum()
+          end
+      else
+          _output_file.print("Failed to start algorithm: No actors available")
+      end
+
+      _set_timeout()
+      end
 
   fun ref create_gossip_actor(id: USize): GossipActor =>
     GossipActor.create(id, this, recover Rand(Time.nanos()) end)
@@ -178,7 +177,7 @@ actor Main
         main.check_timeout()
         true
       fun ref cancel(timer: Timer) => None
-    end, 1_000_000_000, 1_000_000_000) // Check every second
+    end, 1_000_000_000, 1_000_000_000)
     _timers(consume timer)
 
     be check_timeout() =>
@@ -233,6 +232,6 @@ actor Main
         gossip_actor'.spread_again()
         false
       fun ref cancel(timer: Timer) => None
-    end, 100_000_000) // 100ms
+    end, 100_000_000)
     _timers(consume timer)
   end

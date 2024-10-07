@@ -9,7 +9,7 @@ actor GossipActor is Actor
   var _heard_count: USize = 0
   var _neighbors: Array[Actor tag] val = recover val Array[Actor tag] end
   var _last_spread_time: U64 = 0
-  let _spread_interval: U64 = 100 // milliseconds
+  let _spread_interval: U64 = 100
 
   new create(id: USize, master: Main tag, rand: Rand iso) =>
     _id = id
@@ -39,14 +39,14 @@ actor GossipActor is Actor
     
     if _heard_count == 1 then
       spread_rumor()
-    elseif _heard_count == 10 then  // Changed back to 10 as per original requirement
+    elseif _heard_count == 10 then 
       _master.notify_convergence(1)
     else
       spread_rumor()
     end
   
   be stop() =>
-  _heard_count = 10 // This will prevent further spreading
+  _heard_count = 10
 
   fun ref spread_rumor() =>
     let current_time = Time.millis()
