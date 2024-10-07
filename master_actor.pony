@@ -11,7 +11,7 @@ actor Main
     var _algorithm: String
     var rand: Rand iso
     var _start_time: U64
-    let _timeout: U64 = 120_000
+    let _timeout: U64 = 900_000
     let _timers: Timers = Timers
     var _convergence_achieved: Bool = false 
 
@@ -74,7 +74,7 @@ actor Main
     GossipActor.create(id, this, recover Rand(Time.nanos()) end)
 
   fun ref create_push_sum_actor(id: USize): PushSumActor =>
-    PushSumActor.create(id, this, recover Rand(Time.nanos()) end)
+  PushSumActor.create(id, this, recover Rand(Time.nanos()) end)
 
   fun ref build_topology() =>
     match _topology
@@ -128,7 +128,6 @@ actor Main
         let y = (i / size) % size
         let z = i / (size * size)
 
-        // Check neighbors in x direction
         if x > 0 then
           arr.push(_actors(i-1)?)
         end
@@ -136,7 +135,6 @@ actor Main
           arr.push(_actors(i+1)?)
         end
 
-        // Check neighbors in y direction
         if y > 0 then
           arr.push(_actors(i-size)?)
         end
@@ -186,18 +184,36 @@ actor Main
       _timers.dispose()
     end
 
-    be notify_convergence() =>
-    _active_count = _active_count + 1
-    if (_active_count == _total_actors) and (not _convergence_achieved) then
-      _convergence_achieved = true
-      let end_time = Time.millis()
-      let elapsed = end_time - _start_time
-      _env.out.print("Convergence achieved in " + elapsed.string() + " milliseconds")
-      _env.exitcode(0)
-      // Break execution after convergence
-      _env.out.print("Exiting program")
-      _timers.dispose()
-    end
+    be notify_convergence(n: U64) =>
+      if (n==1) then
+      _active_count = _active_count + 1
+        if (_active_count == _total_actors) and (not _convergence_achieved) then
+          _convergence_achieved = true
+          let end_time = Time.millis()
+          let elapsed = end_time - _start_time
+          _env.out.print("All actors have converged. Convergence achieved in " + elapsed.string() + " milliseconds")
+          _env.out.print("Exiting program")
+          _timers.dispose()
+          _env.exitcode(0)
+
+        end
+      end
+      if (n == 2) then 
+        _active_count = _active_count + 1
+        _env.out.print("Actor converged. " + _active_count.string() + "/" + _total_actors.string() + " actors have converged.")
+        
+        if (_active_count == _total_actors) and (not _convergence_achieved) then
+          _convergence_achieved = true
+          let end_time = Time.millis()
+          let elapsed = end_time - _start_time
+          _env.out.print("All actors have converged. Convergence achieved in " + elapsed.string() + " milliseconds")
+          _env.out.print("Exiting program")
+          _timers.dispose()
+          _env.exitcode(0)
+
+        end
+      end
+
 
 
   be print_debug(msg: String) =>
@@ -206,16 +222,16 @@ actor Main
     end
 
   be schedule_spread(gossip_actor: GossipActor) =>
-    if not _convergence_achieved then
-      let timer = Timer(object iso
-        let _gossip_actor: GossipActor = gossip_actor
-        fun ref apply(timer: Timer, count: U64): Bool =>
-          _gossip_actor.spread_again()
-          false
-        fun ref cancel(timer: Timer) => None
-      end, 100_000_000) // 100ms
-      _timers(consume timer)
-    end
+  if not _convergence_achieved then
+    let timer = Timer(object iso
+      let gossip_actor': GossipActor = gossip_actor
+      fun ref apply(timer: Timer, count: U64): Bool =>
+        gossip_actor'.spread_again()
+        false
+      fun ref cancel(timer: Timer) => None
+    end, 100_000_000) // 100ms
+    _timers(consume timer)
+  end
 
 
 trait Actor
@@ -256,10 +272,11 @@ actor GossipActor is Actor
   be receive_rumor() =>
     _heard_count = _heard_count + 1
     _master.print_debug("Debug: Actor " + _id.string() + " heard rumor " + _heard_count.string() + " times")
+    
     if _heard_count == 1 then
       spread_rumor()
-    elseif _heard_count == 5 then // Changed from 10 to 5
-      _master.notify_convergence()
+    elseif _heard_count == 10 then  // Changed back to 10 as per original requirement
+      _master.notify_convergence(1)
     else
       spread_rumor()
     end
@@ -283,21 +300,62 @@ actor GossipActor is Actor
   be spread_again() =>
     spread_rumor()
 
+
 actor PushSumActor is Actor
   let _id: USize
   let _master: Main tag
   let _rand: Rand iso
   var _s: F64
-  var _w: F64 = 1.0
-  var _neighbors: Array[Actor tag] val = recover val Array[Actor tag] end
-  var _unchanged_count: USize = 0
-  var _last_ratio: F64 = 0.0
+  var _w: F64
+  var _neighbors: Array[Actor tag] val
+  var _unchanged_count: USize
+  var _last_ratio: F64
+  var _converged: Bool
+  var _cooldown: USize
 
   new create(id: USize, master: Main tag, rand: Rand iso) =>
     _id = id
     _master = master
     _rand = consume rand
     _s = id.f64()
+    _w = 1.0
+    _neighbors = recover val Array[Actor tag] end
+    _unchanged_count = 0
+    _last_ratio = _s / _w
+    _converged = false
+    _cooldown = 0
+
+  
+  be receive_push_sum(s': F64, w': F64) =>
+    let old_ratio = _s / _w
+    _s = (_s + s')
+    _w = (_w + w')
+    let new_ratio = _s / _w
+
+    if (old_ratio - new_ratio).abs() < 1e-10 then
+      _unchanged_count = _unchanged_count + 1
+      if (_unchanged_count == 3) and (not _converged) then
+        _converged = true
+        _cooldown = 10
+        _master.notify_convergence(2)
+      end
+    else
+      _unchanged_count = 0
+    end
+
+    _last_ratio = new_ratio
+
+    // if _cooldown > 0 then
+    //   _cooldown = _cooldown - 1
+    //   if _cooldown == 0 then`
+    //     _master.notify_convergence(2)
+    //   end
+    // end
+
+    send_push_sum()
+
+  be start_push_sum() =>
+    send_push_sum()
 
   be set_neighbors(neighbors: Array[Actor tag] val) =>
     _neighbors = neighbors
@@ -312,29 +370,6 @@ actor PushSumActor is Actor
       arr
     end
     _neighbors = new_neighbors
-
-  be start_push_sum() =>
-    send_push_sum()
-
-  be receive_push_sum(s': F64, w': F64) =>
-    let old_ratio = _s / _w
-    _s = _s + s'
-    _w = _w + w'
-    let new_ratio = _s / _w
-
-    _master.print_debug("Debug: Actor " + _id.string() + " received push-sum. New ratio: " + new_ratio.string())
-
-    if (old_ratio - new_ratio).abs() < 1e-10 then
-      _unchanged_count = _unchanged_count + 1
-      if _unchanged_count == 3 then
-        _master.notify_convergence()
-        return
-      end
-    else
-      _unchanged_count = 0
-    end
-
-    send_push_sum()
 
   fun ref send_push_sum() =>
     if _neighbors.size() > 0 then
