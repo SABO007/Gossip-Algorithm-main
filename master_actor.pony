@@ -1,6 +1,7 @@
 use "time"
 use "collections"
 use "random"
+use @exit[None](status: I32)
 
 actor Main
     let _env: Env
@@ -30,7 +31,7 @@ actor Main
     if env.args.size() < 4 then
       _env.out.print("Usage: project2 numNodes topology algorithm")
     else
-      _total_actors = try env.args(1)?.usize()? else 10 end
+      _total_actors = try env.args(1)?.usize()? else 2500 end
       _topology = try env.args(2)? else "full" end
       _algorithm = try env.args(3)? else "gossip" end
 
@@ -142,7 +143,6 @@ actor Main
           arr.push(_actors(i+size)?)
         end
 
-        // Check neighbors in z direction
         if z > 0 then
           arr.push(_actors(i-(size*size))?)
         end
@@ -184,35 +184,29 @@ actor Main
       _timers.dispose()
     end
 
+    be shutdown() =>
+      for a in _actors.values() do
+        match a
+        | let ga: GossipActor => ga.stop()
+        | let psa: PushSumActor => psa.stop()
+        end
+      end
+      _timers.dispose()
+      _env.out.flush()
+      @exit[None](I32(0))
+
     be notify_convergence(n: U64) =>
-      if (n==1) then
-      _active_count = _active_count + 1
-        if (_active_count == _total_actors) and (not _convergence_achieved) then
-          _convergence_achieved = true
-          let end_time = Time.millis()
-          let elapsed = end_time - _start_time
-          _env.out.print("All actors have converged. Convergence achieved in " + elapsed.string() + " milliseconds")
-          _env.out.print("Exiting program")
-          _timers.dispose()
-          _env.exitcode(0)
-
-        end
-      end
-      if (n == 2) then 
-        _active_count = _active_count + 1
-        _env.out.print("Actor converged. " + _active_count.string() + "/" + _total_actors.string() + " actors have converged.")
-        
-        if (_active_count == _total_actors) and (not _convergence_achieved) then
-          _convergence_achieved = true
-          let end_time = Time.millis()
-          let elapsed = end_time - _start_time
-          _env.out.print("All actors have converged. Convergence achieved in " + elapsed.string() + " milliseconds")
-          _env.out.print("Exiting program")
-          _timers.dispose()
-          _env.exitcode(0)
-
-        end
-      end
+  if (n == 1) or (n == 2) then
+    _active_count = _active_count + 1
+    _env.out.print("Actor converged. " + _active_count.string() + "/" + _total_actors.string() + " actors have converged.")
+    if (_active_count == _total_actors) and (not _convergence_achieved) then
+      _convergence_achieved = true
+      let end_time = Time.millis()
+      let elapsed = end_time - _start_time
+      _env.out.print("All actors have converged. Convergence achieved in " + elapsed.string() + " milliseconds")
+      shutdown()
+    end
+  end
 
 
 
@@ -280,6 +274,9 @@ actor GossipActor is Actor
     else
       spread_rumor()
     end
+  
+  be stop() =>
+  _heard_count = 10 // This will prevent further spreading
 
   fun ref spread_rumor() =>
     let current_time = Time.millis()
@@ -345,12 +342,12 @@ actor PushSumActor is Actor
 
     _last_ratio = new_ratio
 
-    // if _cooldown > 0 then
-    //   _cooldown = _cooldown - 1
+    if _cooldown > 0 then
+      _cooldown = _cooldown - 1
     //   if _cooldown == 0 then`
     //     _master.notify_convergence(2)
     //   end
-    // end
+    end
 
     send_push_sum()
 
@@ -370,6 +367,10 @@ actor PushSumActor is Actor
       arr
     end
     _neighbors = new_neighbors
+
+  be stop() =>
+    _converged = true
+    _cooldown = 0
 
   fun ref send_push_sum() =>
     if _neighbors.size() > 0 then
