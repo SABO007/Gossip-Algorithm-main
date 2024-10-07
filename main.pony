@@ -13,7 +13,7 @@ actor Main
   var _algorithm: String
   var rand: Rand iso
   var _start_time: U64
-  let _timeout: U64 = 900_000
+  let _timeout: U64 = 1_000_000
   let _timers: Timers = Timers
   var _convergence_achieved: Bool = false 
   let _output_file: File
