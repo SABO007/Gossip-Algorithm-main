@@ -27,6 +27,19 @@ Convergence is achieved when an actor has heard the rumor 10 times.
 2. **Push-Sum Algorithm**
 Computes the average of values distributed across the network.
 
+### Largest network I managed to solve
+Algorithm: Gossip
+1. Topology: Full, Network size = 13000
+2. Topology: Line, Network size = 6000
+3. Topology: 3D, Network size = 300000
+4. Topology: imp3D, Network size = 200000
+
+Algorithm: Push-sum
+1. Topology: Full, Network size = 15500
+2. Topology: Line, Network size = 800
+3. Topology: 3D, Network size = 50000
+4. Topology: imp3D, Network size = 200000
+
 ### Network Topologies
 1. **Full Network:** Every actor is connected to every other actor.
 2. **3D Grid:** Actors are arranged in a three-dimensional grid.
